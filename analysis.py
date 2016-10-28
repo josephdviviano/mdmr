@@ -97,7 +97,12 @@ def full_rank(X):
 
 def sig_cutoffs(null, two_sided=True):
     """Returns the significance cutoffs of the submitted null distribution."""
-    return(np.array([np.percentile(F_null, 5), np.percentile(F_null, 95)]))
+    if two_sided:
+        sig = np.array([np.percentile(F_null, 2.5), np.percentile(F_null, 97.5)])
+    else:
+        sig = np.array([np.percentile(F_null, 5), np.percentile(F_null, 95)])
+
+    return(sig)
 
 def reorder(X, idx, symm=False):
     """
@@ -113,13 +118,13 @@ def reorder(X, idx, symm=False):
 
 def gowers_matrix(D):
     """Calculates Gower's centered matrix from a distance matrix."""
-
     assert_square(D)
 
     n = float(D.shape[0])
-    I = np.identity(n) - (1/n)*np.ones((n, 1))*(np.ones((n, 1)).T)
-    A = -0.5*np.square(D)
-    G = I*A*I
+    o = np.ones((n, 1))
+    I = np.identity(n) - (1/n)*o.dot(o.T)
+    A = -0.5*(np.square(D))
+    G = I.dot(A).dot(I)
 
     return(G)
 
@@ -135,6 +140,11 @@ def hat_matrix(X):
     return(H)
 
 def calc_F(H, G, m=None):
+    """
+    Calculate the F statistic when comparing two matricies.
+    """
+    assert_square(H)
+    assert_square(G)
 
     n = H.shape[0]
     I = np.identity(n)
@@ -146,7 +156,6 @@ def calc_F(H, G, m=None):
         F = (np.trace(H.dot(G).dot(H))) / np.trace(IG.dot(G).dot(IG))
 
     return F
-
 
 def permute(H, G, n=10000):
     """
@@ -170,6 +179,18 @@ def permute(H, G, n=10000):
 
     return F_null
 
+def variance_explained(H, G):
+    """
+    Calculates variance explained in the distance matrix by the M predictor
+    variables in X.
+    """
+    assert_square(H)
+    assert_square(G)
+
+    variance = (np.trace(H.dot(G).dot(H))) / np.trace(G)
+
+    return(variance)
+
 def mdmr(X, Y):
     """
     Multvariate regression analysis of distance matricies: regresses variables
@@ -188,10 +209,18 @@ def mdmr(X, Y):
     H = hat_matrix(X)    # hat matrix of regressors (cognitive variables)
     F = calc_F(H, G)     # F test of relationship between regressors and distance matrix
     F_null = permute(H, G)
+    v = variance_explained(H, G)
 
-    return F, F_null
+    return F, F_null, v
 
-def cluster():
+def cluster(X, Y, subjects, diagnosis):
+    """
+    Creates a distance matrix out of the input matrix Y. Clustering is run on
+    this matrix using hierarchical clustering (Ward's algorithm). The data is
+    ploted, and the variables in X are shown for all groups in each cluster.
+    """
+
+    R = np.corrcoef(Y)   # correlations of Z-scored correlations, as in Finn et al. 2015.
 
     # hierarchical clustering
     fig = plt.figure()
@@ -226,14 +255,21 @@ if __name__ == '__main__':
                'scog_tasit_p3_total',
                'scog_rmet_total',
                'scog_rad_total',
+               'scog_er40_cr_columnpcr_value',
+               'scog_er40_crt_columnqcrt_value',
+               'np_domain_tscore_process_speed',
+               'np_domain_tscore_att_vigilance',
+               'np_domain_tscore_work_mem',
+               'np_domain_tscore_verbal_learning',
+               'np_domain_tscore_visual_learning',
+               'np_domain_tscore_reasoning_ps',
+               'np_domain_tscore_social_cog',
+               'np_composite_tscore',
                'sans_total_sc',
                'wtar_std_score',
                'demo_age_study_entry',
                'demo_sex_birth']
 
-    columns = ['redcap_event_name',
-               'scog_tasit_p2_total',
-               'scog_tasit_p3_total']
     # mri data
     nii_dir = '/archive/data/SPINS/pipelines/fmri/rest'
     candidates = glob.glob(nii_dir + '/*/*_roi-corrs.csv')
@@ -266,10 +302,11 @@ if __name__ == '__main__':
     print('subjects: {} found, {} clean'.format(len(data.keys()), X.shape[0]))
 
     # mdmr analysis
-    F, F_null = mdmr(X, Y)
+    F, F_null, v = mdmr(X, Y)
     thresholds = sig_cutoffs(F_null)
     if F < thresholds[0]:
         print('F significant, F={} < {}'.format(F, thresholds[0]))
     elif F > thresholds[1]:
         print('F significant, F={} > {}'.format(F, thresholds[1]))
 
+    cluster(X, Y, subjects, diagnosis)
