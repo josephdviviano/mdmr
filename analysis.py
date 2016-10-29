@@ -277,10 +277,34 @@ def cluster(X, Y, subjects, diagnosis):
     plt.colorbar(im, cax=axc)
     plt.show()
 
+    return clst, idx
+
 if __name__ == '__main__':
     """
     Collects data, runs MDMR analysis, runs cluster analysis.
     """
+#    columns = ['redcap_event_name',
+#               'scog_tasit_p1_total_positive',
+#               'scog_tasit_p1_total_negative',
+#               'scog_tasit_p2_total',
+#               'scog_tasit_p3_total',
+#               'scog_rmet_total',
+#               'scog_rad_total',
+#               'scog_er40_cr_columnpcr_value',
+#               'scog_er40_crt_columnqcrt_value',
+#               'np_domain_tscore_process_speed',
+#               'np_domain_tscore_att_vigilance',
+#               'np_domain_tscore_work_mem',
+#               'np_domain_tscore_verbal_learning',
+#               'np_domain_tscore_visual_learning',
+#               'np_domain_tscore_reasoning_ps',
+#               'np_domain_tscore_social_cog',
+#               'np_composite_tscore',
+#               'sans_total_sc',
+#               'wtar_std_score',
+#               'demo_age_study_entry',
+#               'demo_sex_birth']
+
     columns = ['redcap_event_name',
                'scog_tasit_p1_total_positive',
                'scog_tasit_p1_total_negative',
@@ -289,19 +313,7 @@ if __name__ == '__main__':
                'scog_rmet_total',
                'scog_rad_total',
                'scog_er40_cr_columnpcr_value',
-               'scog_er40_crt_columnqcrt_value',
-               'np_domain_tscore_process_speed',
-               'np_domain_tscore_att_vigilance',
-               'np_domain_tscore_work_mem',
-               'np_domain_tscore_verbal_learning',
-               'np_domain_tscore_visual_learning',
-               'np_domain_tscore_reasoning_ps',
-               'np_domain_tscore_social_cog',
-               'np_composite_tscore',
-               'sans_total_sc',
-               'wtar_std_score',
-               'demo_age_study_entry',
-               'demo_sex_birth']
+               'scog_er40_crt_columnqcrt_value']
 
     # mri data
     nii_dir = '/archive/data/SPINS/pipelines/fmri/rest'
@@ -339,6 +351,14 @@ if __name__ == '__main__':
     thresholds = sig_cutoffs(F_null, two_sided=False)
     if F > thresholds[1]:
         print('F significant, F={} > {}'.format(F, thresholds[1]))
-    V = individual_importances(X, Y)
 
-    cluster(X, Y, subjects, diagnosis)
+    clst, idx = cluster(X, Y, subjects, diagnosis)
+
+    # get means
+    means = np.zeros((X.shape[1], len(np.unique(clst))))
+    for x in range(X.shape[1]):
+        for c in np.unique(clst):
+            means[x, c-1] = np.mean(X[clst == c, x])
+    means = ((means.T - means.mean(axis=1).T) / means.std(axis=1).T).T # scary zscore hack
+
+
