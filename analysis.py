@@ -83,16 +83,24 @@ def r_to_d(R):
     """Converts a correlation matrix R to a distance matrix D."""
     return(np.sqrt(2*(1-R)))
 
+def standardize(X):
+    """Mean centers and z-scores each column of X."""
+    return((X - X.mean(axis=0)) / X.std(axis=0))
+
 def assert_square(X):
     if len(X.shape) != 2 or X.shape[0] != X.shape[1]:
         raise Exception("Input matrix must be square")
 
 def full_rank(X):
     """Ensures input matrix X is not rank deficient."""
+    if len(X.shape) == 1:
+        return True
+
     k = X.shape[1]
     rank = np.linalg.matrix_rank(X)
     if rank < k:
         return False
+
     return True
 
 def sig_cutoffs(null, two_sided=True):
@@ -197,12 +205,10 @@ def mdmr(X, Y):
     of interest X (behavioural) onto a matrix representing the similarity of
     connectivity profiles Y.
     """
-
     if not full_rank(X):
         raise Exception('X is not full rank:\ndimensions = {}'.format(X.shape))
 
-    n = X.shape[0]       # number of subjects
-    m = X.shape[1]       # number of predictors per subject
+    X = standardize(X)   # mean center and Z-score all cognitive variables
     R = np.corrcoef(Y)   # correlations of Z-scored correlations, as in Finn et al. 2015.
     D = r_to_d(R)        # distance matrix of correlation matrix
     G = gowers_matrix(D) # centered distance matrix (connectivity similarities)
@@ -212,6 +218,33 @@ def mdmr(X, Y):
     v = variance_explained(H, G)
 
     return F, F_null, v
+
+def backwards_selection(X, Y):
+    """
+    Performs backwards variable selection on the input data.
+    """
+
+    return False
+
+def individual_importances(X, Y):
+    """
+    Runs MDMR individually for each variable. If the variable is deemed
+    significant, the variance explained is recorded, otherwise it is reported
+    as 0. Returns a vector of variance explained.
+    """
+    m = X.shape[1]
+    V = np.zeros(m)
+    for test in range(m):
+        X_test = np.atleast_2d(X[:, test]).T # enforces a column vector
+        F, F_null, v = mdmr(X_test, Y)
+        thresholds = sig_cutoffs(F_null, two_sided=False)
+        if F > thresholds[1]:
+            V[test] = v
+        else:
+            V[test] = 0
+        print('tested variable {}/{}'.format(test+1, m))
+
+    return V
 
 def cluster(X, Y, subjects, diagnosis):
     """
@@ -303,10 +336,9 @@ if __name__ == '__main__':
 
     # mdmr analysis
     F, F_null, v = mdmr(X, Y)
-    thresholds = sig_cutoffs(F_null)
-    if F < thresholds[0]:
-        print('F significant, F={} < {}'.format(F, thresholds[0]))
-    elif F > thresholds[1]:
+    thresholds = sig_cutoffs(F_null, two_sided=False)
+    if F > thresholds[1]:
         print('F significant, F={} > {}'.format(F, thresholds[1]))
+    V = individual_importances(X, Y)
 
     cluster(X, Y, subjects, diagnosis)
