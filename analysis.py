@@ -18,6 +18,7 @@ import scipy as sp
 import scipy.cluster.hierarchy as sch
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 
 # data munging
 def get_database_name(subject):
@@ -28,11 +29,11 @@ def get_database_name(subject):
 
 def get_diagnosis(string):
     if '1' in string:
-        return 'C'
+        return 1
     elif '2' in string:
-        return 'S'
+        return 2
     else:
-        return ''
+        return np.nan
 
 def scrub_data(x):
     """
@@ -246,13 +247,12 @@ def individual_importances(X, Y):
 
     return V
 
-def cluster(X, Y, subjects, diagnosis):
+def cluster(X, Y, subjects, diagnosis, n_clust=3):
     """
     Creates a distance matrix out of the input matrix Y. Clustering is run on
     this matrix using hierarchical clustering (Ward's algorithm). The data is
     ploted, and the variables in X are shown for all groups in each cluster.
     """
-
     R = np.corrcoef(Y)   # correlations of Z-scored correlations, as in Finn et al. 2015.
 
     # hierarchical clustering
@@ -261,7 +261,7 @@ def cluster(X, Y, subjects, diagnosis):
     axd.set_xticks([])
     axd.set_yticks([])
     link = sch.linkage(R, method='ward')
-    clst = sch.fcluster(link, 3, criterion='maxclust')
+    clst = sch.fcluster(link, n_clust, criterion='maxclust')
 
     # plot
     dend = sch.dendrogram(link, orientation='right')
@@ -275,14 +275,51 @@ def cluster(X, Y, subjects, diagnosis):
     axm.set_xticklabels(subjects)
     axc = fig.add_axes([0.91,0.1,0.02,0.8])
     plt.colorbar(im, cax=axc)
-    plt.show()
+    plt.savefig('corr.svg')
 
-    return clst, idx
+    # create dataframe for seaborn
+    df = np.hstack((X, np.atleast_2d(diagnosis).T))
+    df = np.hstack((df, np.atleast_2d(clst).T))
+    columns.append('diagnosis')
+    columns.append('cluster')
+    df = pd.DataFrame(data=df, columns=columns[1:])
+    df = pd.melt(df, id_vars=['diagnosis', 'cluster'], value_vars=columns[1:-2])
+
+    # plot clinical variables by cluster
+    b = sns.boxplot(x="variable", y="value", hue="cluster", data=df, palette="Set3")
+    for item in b.get_xticklabels():
+        item.set_rotation(45)
+    plt.savefig('clusters.svg')
+
+    # get mean and SD of clinical variables
+    means = np.zeros((X.shape[1], len(np.unique(clst))))
+    stds  = np.zeros((X.shape[1], len(np.unique(clst))))
+    for x in range(X.shape[1]):
+        for c in np.unique(clst):
+            means[x, c-1] = np.mean(X[clst == c, x])
+            stds[x, c-1] = np.std(X[clst == c, x])
+    means = ((means.T - means.mean(axis=1))).T
+
+    return clst, idx, means
 
 if __name__ == '__main__':
     """
     Collects data, runs MDMR analysis, runs cluster analysis.
+    NB: add covariates --
+
+        xx_cv = np.array([np.ones([n, 1]), x_cv])  # add intercept
+        xx_cv = np.matrix(xx_cv).getH()
+        # TODO signs are different in MATLAB vs python
+        Q2, R2 = np.linalg.qr(xx_cv)
+        H_cv = Q2 * Q2.getH()  # compute Hat-matrix_pr via QR
+        m1 = xx_cv.shape[1]
+        # captures effect of predictor variable in H_pr
+        # controlling for covariates in H_cv
+        H2 = H - H_cv
+
     """
+
+     # all vars
 #    columns = ['redcap_event_name',
 #               'scog_tasit_p1_total_positive',
 #               'scog_tasit_p1_total_negative',
@@ -305,15 +342,34 @@ if __name__ == '__main__':
 #               'demo_age_study_entry',
 #               'demo_sex_birth']
 
+     # social cog only
+#    columns = ['redcap_event_name',
+#               'scog_tasit_p1_total_positive',
+#               'scog_tasit_p1_total_negative',
+#               'scog_tasit_p2_total',
+#               'scog_tasit_p3_total',
+#               'scog_rmet_total',
+#               'scog_rad_total',
+#               'scog_er40_cr_columnpcr_value',
+#               'scog_er40_crt_columnqcrt_value']
+
+    # neuropsych only
     columns = ['redcap_event_name',
-               'scog_tasit_p1_total_positive',
-               'scog_tasit_p1_total_negative',
-               'scog_tasit_p2_total',
-               'scog_tasit_p3_total',
-               'scog_rmet_total',
-               'scog_rad_total',
-               'scog_er40_cr_columnpcr_value',
-               'scog_er40_crt_columnqcrt_value']
+               'np_domain_tscore_process_speed',
+               'np_domain_tscore_att_vigilance',
+               'np_domain_tscore_work_mem',
+               'np_domain_tscore_verbal_learning',
+               'np_domain_tscore_visual_learning',
+               'np_domain_tscore_reasoning_ps',
+               'np_domain_tscore_social_cog',
+               'np_composite_tscore',
+               'sans_total_sc']
+
+     # covariates
+#    columns = ['redcap_event_name',
+#               'wtar_std_score',
+#               'demo_age_study_entry',
+#               'demo_sex_birth']
 
     # mri data
     nii_dir = '/archive/data/SPINS/pipelines/fmri/rest'
@@ -352,13 +408,5 @@ if __name__ == '__main__':
     if F > thresholds[1]:
         print('F significant, F={} > {}'.format(F, thresholds[1]))
 
-    clst, idx = cluster(X, Y, subjects, diagnosis)
-
-    # get means
-    means = np.zeros((X.shape[1], len(np.unique(clst))))
-    for x in range(X.shape[1]):
-        for c in np.unique(clst):
-            means[x, c-1] = np.mean(X[clst == c, x])
-    means = ((means.T - means.mean(axis=1).T) / means.std(axis=1).T).T # scary zscore hack
-
+    clst, idx, means = cluster(X, Y, subjects, diagnosis)
 
