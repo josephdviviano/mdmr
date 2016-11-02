@@ -275,9 +275,11 @@ def cluster(X, Y, subjects, diagnosis, n_clust=3):
     axm.set_xticklabels(subjects)
     axc = fig.add_axes([0.91,0.1,0.02,0.8])
     plt.colorbar(im, cax=axc)
-    plt.savefig('corr.svg')
+    plt.savefig('outputs/corr.pdf')
+    plt.close()
 
     # create dataframe for seaborn
+    X = standardize(X)
     df = np.hstack((X, np.atleast_2d(diagnosis).T))
     df = np.hstack((df, np.atleast_2d(clst).T))
     columns.append('diagnosis')
@@ -289,7 +291,8 @@ def cluster(X, Y, subjects, diagnosis, n_clust=3):
     b = sns.boxplot(x="variable", y="value", hue="cluster", data=df, palette="Set3")
     for item in b.get_xticklabels():
         item.set_rotation(45)
-    plt.savefig('clusters.svg')
+    sns.plt.savefig('outputs/stats.pdf')
+    sns.plt.close()
 
     # get mean and SD of clinical variables
     means = np.zeros((X.shape[1], len(np.unique(clst))))
@@ -319,7 +322,7 @@ if __name__ == '__main__':
 
     """
 
-     # all vars
+#    # all vars
 #    columns = ['redcap_event_name',
 #               'scog_tasit_p1_total_positive',
 #               'scog_tasit_p1_total_negative',
@@ -341,31 +344,31 @@ if __name__ == '__main__':
 #               'wtar_std_score',
 #               'demo_age_study_entry',
 #               'demo_sex_birth']
-
-     # social cog only
-#    columns = ['redcap_event_name',
-#               'scog_tasit_p1_total_positive',
-#               'scog_tasit_p1_total_negative',
-#               'scog_tasit_p2_total',
-#               'scog_tasit_p3_total',
-#               'scog_rmet_total',
-#               'scog_rad_total',
-#               'scog_er40_cr_columnpcr_value',
-#               'scog_er40_crt_columnqcrt_value']
-
-    # neuropsych only
+#
+    # social cog only
     columns = ['redcap_event_name',
-               'np_domain_tscore_process_speed',
-               'np_domain_tscore_att_vigilance',
-               'np_domain_tscore_work_mem',
-               'np_domain_tscore_verbal_learning',
-               'np_domain_tscore_visual_learning',
-               'np_domain_tscore_reasoning_ps',
-               'np_domain_tscore_social_cog',
-               'np_composite_tscore',
-               'sans_total_sc']
-
-     # covariates
+               'scog_tasit_p1_total_positive',
+               'scog_tasit_p1_total_negative',
+               'scog_tasit_p2_total',
+               'scog_tasit_p3_total',
+               'scog_rmet_total',
+               'scog_rad_total',
+               'scog_er40_cr_columnpcr_value',
+               'scog_er40_crt_columnqcrt_value']
+#
+#    # neuropsych only
+#    columns = ['redcap_event_name',
+#               'np_domain_tscore_process_speed',
+#               'np_domain_tscore_att_vigilance',
+#               'np_domain_tscore_work_mem',
+#               'np_domain_tscore_verbal_learning',
+#               'np_domain_tscore_visual_learning',
+#               'np_domain_tscore_reasoning_ps',
+#               'np_domain_tscore_social_cog',
+#               'np_composite_tscore',
+#               'sans_total_sc']
+#
+#    # covariates
 #    columns = ['redcap_event_name',
 #               'wtar_std_score',
 #               'demo_age_study_entry',
@@ -376,7 +379,7 @@ if __name__ == '__main__':
     candidates = glob.glob(nii_dir + '/*/*_roi-corrs.csv')
 
     # clinical data
-    spreadsheet = '/projects/jviviano/data/spins/meeting/2yr/16-09-2016_jdv.csv'
+    spreadsheet = 'data/data.csv'
     variables = pd.read_csv(spreadsheet, index_col=0)
     variables = variables[columns]
 
@@ -406,7 +409,40 @@ if __name__ == '__main__':
     F, F_null, v = mdmr(X, Y)
     thresholds = sig_cutoffs(F_null, two_sided=False)
     if F > thresholds[1]:
-        print('F significant, F={} > {}'.format(F, thresholds[1]))
+        print('F significant, F={} > {}\nv={}'.format(F, thresholds[1], v))
 
     clst, idx, means = cluster(X, Y, subjects, diagnosis)
 
+    # collect average matrix for each cluster
+    avg_matrix = np.zeros((268,268,len(np.unique(clst))))
+    for i, c in enumerate(np.unique(clst)):
+        for subj in Y[clst==c, :]:
+            mat = np.zeros((268,268))
+            mat[np.triu_indices(268,1)] = subj
+            mat += mat.T
+            mat = r_to_z(mat)
+            avg_matrix[:, :, i] += mat
+        avg_matrix[:, :, i] = avg_matrix[:, :, i] / sum(clst == c)
+    limit=0.5
+    fig, ax = plt.subplots(3,3)
+    ax[0,0].imshow(avg_matrix[:, :, 0], vmin=-limit, vmax=limit, cmap=plt.cm.RdBu_r)
+    ax[1,1].imshow(avg_matrix[:, :, 1], vmin=-limit, vmax=limit, cmap=plt.cm.RdBu_r)
+    ax[2,2].imshow(avg_matrix[:, :, 2], vmin=-limit, vmax=limit, cmap=plt.cm.RdBu_r)
+    ax[1,0].imshow(avg_matrix[:, :, 0]-avg_matrix[:, :, 1], vmin=-limit, vmax=limit, cmap=plt.cm.RdBu_r)
+    ax[2,0].imshow(avg_matrix[:, :, 0]-avg_matrix[:, :, 2], vmin=-limit, vmax=limit, cmap=plt.cm.RdBu_r)
+    ax[2,1].imshow(avg_matrix[:, :, 1]-avg_matrix[:, :, 2], vmin=-limit, vmax=limit, cmap=plt.cm.RdBu_r)
+    ax[0,0].set_title('cluster 1')
+    ax[1,1].set_title('cluster 2')
+    ax[2,2].set_title('cluster 3')
+    ax[1,0].set_title('cluster 1-cluster2')
+    ax[2,0].set_title('cluster 1-cluster3')
+    ax[2,1].set_title('cluster 3-cluster2')
+    ax[0,0].set_xticks([]); ax[0,0].set_yticks([])
+    ax[1,1].set_xticks([]); ax[1,1].set_yticks([])
+    ax[2,2].set_xticks([]); ax[2,2].set_yticks([])
+    ax[1,0].set_xticks([]); ax[1,0].set_yticks([])
+    ax[2,0].set_xticks([]); ax[2,0].set_yticks([])
+    ax[2,1].set_xticks([]); ax[2,1].set_yticks([])
+    ax[0,1].axis('off')
+    ax[0,2].axis('off')
+    ax[1,2].axis('off')
