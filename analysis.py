@@ -146,6 +146,9 @@ def hat_matrix(X):
     Q1, R1 = np.linalg.qr(X)
     H = Q1.dot(Q1.T)
 
+    # TODO: see line 217 of this https://github.com/czarrar/connectir/blob/master/R/mdmr_model.R
+    # calculate H ontwo random splits of data and subtract them to generate hat of residuals
+
     return(H)
 
 def calc_F(H, G, m=None):
