@@ -130,8 +130,8 @@ def gowers_matrix(D):
     assert_square(D)
 
     n = float(D.shape[0])
-    o = np.ones((n, 1))
-    I = np.identity(n) - (1/n)*o.dot(o.T)
+    o = np.ones((int(n), 1))
+    I = np.identity(int(n)) - (1/n)*o.dot(o.T)
     A = -0.5*(np.square(D))
     G = I.dot(A).dot(I)
 
